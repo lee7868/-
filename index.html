@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>업무용 라이트 카메라</title>
+    <title>업무용 묶음 카메라</title>
     
     <link rel="icon" href="https://lee7868.github.io/-/icon.png">
     <link rel="apple-touch-icon" href="https://lee7868.github.io/-/icon.png">
@@ -18,7 +18,6 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
             min-height: 100vh;
             margin: 0;
             padding: 20px;
@@ -32,14 +31,16 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             width: 100%;
             max-width: 400px;
+            margin-top: 20px;
         }
         h1 { margin: 0 0 10px 0; color: #333; font-size: 1.4rem; }
         
+        /* 버튼 스타일 */
         .btn {
             display: block;
             width: 100%;
             padding: 18px 0;
-            margin: 15px 0;
+            margin: 10px 0;
             border: none;
             border-radius: 12px;
             font-size: 1.2rem;
@@ -49,55 +50,92 @@
             transition: transform 0.1s;
         }
         .btn:active { transform: scale(0.98); }
-        .btn-primary { background-color: #007bff; color: white; }
-        .btn-manual { background-color: #28a745; color: white; display: none; text-decoration: none; line-height: 1.5; font-size: 1rem; }
+        
+        .btn-add { background-color: #007bff; color: white; } /* 파란색: 추가 */
+        .btn-send { background-color: #28a745; color: white; display: none; } /* 초록색: 전송 */
+        
+        .btn-reset { 
+            background-color: #6c757d; 
+            color: white; 
+            font-size: 0.9rem; 
+            padding: 10px; 
+            margin-top: 20px;
+        }
 
         #cameraInput { display: none; }
         
-        #preview {
-            max-width: 100%;
-            border-radius: 8px;
-            margin-top: 10px;
-            display: none;
-            border: 2px solid #eee;
-        }
         .info {
             font-size: 0.9rem;
             color: #666;
-            margin-top: 10px;
+            margin: 10px 0;
             white-space: pre-line;
+        }
+
+        /* 찍은 사진 목록 (그리드) */
+        #photoList {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
+            margin-top: 15px;
+        }
+        #photoList img {
+            width: 100%;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .count-badge {
+            font-size: 1.1rem;
+            color: #007bff;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>🚀 쾌속 공유 카메라</h1>
-        <p class="info">찍어서 바로 슬랙/카톡으로 보냅니다.</p>
+        <h1>📸 업무용 묶음 카메라</h1>
+        <p class="info">최대 10장까지 모아서 보냅니다.<br>현재: <span id="countDisplay" class="count-badge">0</span> / 10</p>
 
-        <button class="btn btn-primary" onclick="document.getElementById('cameraInput').click();">
-            📷 촬영 후 바로 전송
+        <button id="addBtn" class="btn btn-add" onclick="triggerCamera()">
+            📷 사진 촬영 (추가)
+        </button>
+
+        <button id="shareBtn" class="btn btn-send" onclick="shareAllPhotos()">
+            🚀 슬랙으로 한 번에 보내기
         </button>
 
         <input type="file" id="cameraInput" accept="image/*" capture="environment">
 
-        <div id="status" class="info"></div>
-        <img id="preview" alt="미리보기">
+        <div id="photoList"></div>
         
-        <a id="downloadBtn" class="btn btn-manual">📥 갤러리에 저장하기</a>
+        <button class="btn btn-reset" onclick="location.reload()">🗑️ 전체 삭제하고 다시 찍기</button>
     </div>
 
     <script>
         const cameraInput = document.getElementById('cameraInput');
-        const preview = document.getElementById('preview');
-        const downloadBtn = document.getElementById('downloadBtn');
-        const status = document.getElementById('status');
+        const photoList = document.getElementById('photoList');
+        const shareBtn = document.getElementById('shareBtn');
+        const countDisplay = document.getElementById('countDisplay');
+        const addBtn = document.getElementById('addBtn');
 
         const MAX_WIDTH = 1280; 
         const MAX_HEIGHT = 1280;
         const COMPRESSION_QUALITY = 0.7;
 
-        // 데이터 URL을 파일 객체(Blob)로 바꾸는 함수
+        // 찍은 사진 파일들을 저장할 보따리 (배열)
+        let collectedFiles = [];
+
+        function triggerCamera() {
+            if (collectedFiles.length >= 10) {
+                alert("최대 10장까지만 가능합니다! 전송 버튼을 눌러주세요.");
+                return;
+            }
+            cameraInput.click();
+        }
+
+        // 데이터 URL을 파일 객체로 변환하는 함수
         function dataURLtoFile(dataurl, filename) {
             var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
                 bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
@@ -111,10 +149,10 @@
             const file = e.target.files[0];
             if (!file) return;
 
-            status.innerText = "⚡ 변환 중...";
-            preview.style.display = 'none';
-            downloadBtn.style.display = 'none';
-            
+            // 로딩 표시 대신 버튼 글씨 변경
+            addBtn.innerText = "⏳ 처리 중...";
+            addBtn.disabled = true;
+
             const reader = new FileReader();
             reader.onload = function(event) {
                 const img = new Image();
@@ -135,46 +173,56 @@
 
                     const dataUrl = canvas.toDataURL('image/jpeg', COMPRESSION_QUALITY);
                     
-                    preview.src = dataUrl;
-                    preview.style.display = 'block';
-
-                    const originalSize = (file.size / 1024).toFixed(0);
-                    const compressedSize = (Math.round((dataUrl.length * 3 / 4) / 1024));
-                    status.innerText = `✅ 변환 완료 (${originalSize}KB → ${compressedSize}KB)`;
-
-                    // 공유 실행
+                    // 1. 파일 이름 생성 (work_1.jpg, work_2.jpg ...)
                     const date = new Date();
-                    const fileName = `work_${date.getHours()}${date.getMinutes()}${date.getSeconds()}.jpg`;
+                    const fileName = `work_${date.getHours()}${date.getMinutes()}_${collectedFiles.length + 1}.jpg`;
                     const compressedFile = dataURLtoFile(dataUrl, fileName);
 
-                    // Web Share API 사용
-                    if (navigator.share) {
-                        navigator.share({
-                            files: [compressedFile],
-                            title: '업무 사진',
-                            text: '압축된 업무 사진입니다.'
-                        })
-                        .then(() => status.innerText = "🚀 전송 완료!")
-                        .catch((error) => {
-                            console.log('공유 실패', error);
-                            // 공유 취소하거나 실패하면 수동 다운로드 버튼 표시
-                            status.innerText = "저장 버튼을 눌러주세요.";
-                            downloadBtn.href = dataUrl;
-                            downloadBtn.download = fileName;
-                            downloadBtn.style.display = 'block';
-                        });
-                    } else {
-                        // 공유 기능 없는 브라우저 (PC 등)
-                        status.innerText = "이 브라우저는 공유 기능을 지원하지 않습니다.\n아래 버튼으로 저장하세요.";
-                        downloadBtn.href = dataUrl;
-                        downloadBtn.download = fileName;
-                        downloadBtn.style.display = 'block';
-                    }
+                    // 2. 보따리에 담기
+                    collectedFiles.push(compressedFile);
+
+                    // 3. 화면에 썸네일 추가
+                    const thumbImg = document.createElement('img');
+                    thumbImg.src = dataUrl;
+                    photoList.appendChild(thumbImg);
+
+                    // 4. UI 업데이트
+                    countDisplay.innerText = collectedFiles.length;
+                    shareBtn.style.display = 'block'; // 전송 버튼 보이기
+                    shareBtn.innerText = `🚀 ${collectedFiles.length}장 묶어서 보내기`;
+                    
+                    addBtn.innerText = "📷 사진 촬영 (추가)";
+                    addBtn.disabled = false;
+                    
+                    // 같은 파일 다시 찍을 수 있게 초기화
+                    cameraInput.value = '';
                 };
                 img.src = event.target.result;
             };
             reader.readAsDataURL(file);
         });
+
+        async function shareAllPhotos() {
+            if (collectedFiles.length === 0) return;
+
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        files: collectedFiles,
+                        title: '업무 사진 묶음',
+                        text: `총 ${collectedFiles.length}장의 사진입니다.`
+                    });
+                    // 전송 성공 시
+                    alert("전송 완료! 목록을 비웁니다.");
+                    location.reload(); // 새로고침해서 초기화
+                } catch (error) {
+                    console.log('공유 실패', error);
+                    alert("전송이 취소되었거나 실패했습니다.");
+                }
+            } else {
+                alert("이 브라우저는 여러 장 공유 기능을 지원하지 않습니다.");
+            }
+        }
     </script>
 </body>
 </html>
