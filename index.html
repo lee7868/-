@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>업무용 묶음 카메라</title>
+    <title>업무용 묶음 카메라 (폴더형)</title>
     
     <link rel="icon" href="https://lee7868.github.io/-/icon.png">
     <link rel="apple-touch-icon" href="https://lee7868.github.io/-/icon.png">
@@ -31,10 +31,37 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             width: 100%;
             max-width: 400px;
-            margin-top: 20px;
+            margin-top: 10px;
         }
-        h1 { margin: 0 0 10px 0; color: #333; font-size: 1.4rem; }
+        h1 { margin: 0 0 15px 0; color: #333; font-size: 1.4rem; }
         
+        /* 폴더 컨트롤 디자인 */
+        .folder-control {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        #folderSelect {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #007bff;
+            font-size: 1rem;
+            font-weight: bold;
+            color: #007bff;
+            background: #f8f9fa;
+        }
+        .btn-small {
+            padding: 12px 15px;
+            border-radius: 8px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
         /* 버튼 스타일 */
         .btn {
             display: block;
@@ -47,21 +74,11 @@
             font-weight: bold;
             cursor: pointer;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            transition: transform 0.1s;
         }
         .btn:active { transform: scale(0.98); }
+        .btn-add { background-color: #007bff; color: white; }
+        .btn-send { background-color: #28a745; color: white; display: none; }
         
-        .btn-add { background-color: #007bff; color: white; } /* 파란색: 추가 */
-        .btn-send { background-color: #28a745; color: white; display: none; } /* 초록색: 전송 */
-        
-        .btn-reset { 
-            background-color: #6c757d; 
-            color: white; 
-            font-size: 0.9rem; 
-            padding: 10px; 
-            margin-top: 20px;
-        }
-
         #cameraInput { display: none; }
         
         .info {
@@ -71,7 +88,7 @@
             white-space: pre-line;
         }
 
-        /* 찍은 사진 목록 (그리드) */
+        /* 찍은 사진 목록 */
         #photoList {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -80,37 +97,37 @@
         }
         #photoList img {
             width: 100%;
-            height: 80px;
+            height: 90px;
             object-fit: cover;
             border-radius: 5px;
             border: 1px solid #ddd;
         }
-        .count-badge {
-            font-size: 1.1rem;
-            color: #007bff;
-            font-weight: bold;
-        }
+        .count-badge { font-size: 1.1rem; color: #007bff; font-weight: bold; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>📸 업무용 묶음 카메라</h1>
-        <p class="info">최대 10장까지 모아서 보냅니다.<br>현재: <span id="countDisplay" class="count-badge">0</span> / 10</p>
+        <h1>🗂️ 다중 고객사 카메라</h1>
+        
+        <div class="folder-control">
+            <select id="folderSelect" onchange="changeFolder()"></select>
+            <button class="btn-small" onclick="createFolder()">+ 새 폴더</button>
+        </div>
+
+        <p class="info"><span id="currentFolderName">기본 폴더</span>: <span id="countDisplay" class="count-badge">0</span>장 (최대 10장)</p>
 
         <button id="addBtn" class="btn btn-add" onclick="triggerCamera()">
-            📷 사진 촬영 (추가)
+            📷 현재 폴더에 사진 촬영
         </button>
 
-        <button id="shareBtn" class="btn btn-send" onclick="shareAllPhotos()">
-            🚀 슬랙으로 한 번에 보내기
+        <button id="shareBtn" class="btn btn-send" onclick="shareCurrentFolder()">
+            🚀 현재 폴더 슬랙으로 보내기
         </button>
 
         <input type="file" id="cameraInput" accept="image/*" capture="environment">
 
         <div id="photoList"></div>
-        
-        <button class="btn btn-reset" onclick="location.reload()">🗑️ 전체 삭제하고 다시 찍기</button>
     </div>
 
     <script>
@@ -119,23 +136,93 @@
         const shareBtn = document.getElementById('shareBtn');
         const countDisplay = document.getElementById('countDisplay');
         const addBtn = document.getElementById('addBtn');
+        const folderSelect = document.getElementById('folderSelect');
+        const currentFolderName = document.getElementById('currentFolderName');
 
         const MAX_WIDTH = 1280; 
         const MAX_HEIGHT = 1280;
         const COMPRESSION_QUALITY = 0.7;
 
-        // 찍은 사진 파일들을 저장할 보따리 (배열)
-        let collectedFiles = [];
+        // 고객사별로 사진을 담을 "큰 보따리"
+        let folders = {
+            "기본 고객사": []
+        };
+        let currentFolder = "기본 고객사";
 
+        // 화면 켤 때 폴더 목록 세팅
+        function initFolders() {
+            updateFolderSelect();
+            renderPhotos();
+        }
+
+        // 새 폴더 만들기
+        function createFolder() {
+            const name = prompt("새로운 고객사 이름을 입력하세요\n(예: 사과고객사)");
+            if (name && name.trim() !== "") {
+                if (!folders[name]) {
+                    folders[name] = []; // 빈 보따리 생성
+                }
+                currentFolder = name;
+                updateFolderSelect();
+                renderPhotos();
+            }
+        }
+
+        // 폴더 변경하기
+        function changeFolder() {
+            currentFolder = folderSelect.value;
+            renderPhotos();
+        }
+
+        // 상단 드롭다운(Select) 메뉴 업데이트
+        function updateFolderSelect() {
+            folderSelect.innerHTML = '';
+            for (let folder in folders) {
+                const opt = document.createElement('option');
+                opt.value = folder;
+                opt.innerText = `${folder} (${folders[folder].length}장)`;
+                folderSelect.appendChild(opt);
+            }
+            folderSelect.value = currentFolder;
+            currentFolderName.innerText = currentFolder;
+        }
+
+        // 현재 폴더의 사진들을 화면에 그려주기
+        function renderPhotos() {
+            photoList.innerHTML = '';
+            const currentPhotos = folders[currentFolder];
+            
+            currentPhotos.forEach(item => {
+                const img = document.createElement('img');
+                img.src = item.url;
+                photoList.appendChild(img);
+            });
+
+            countDisplay.innerText = currentPhotos.length;
+            
+            if (currentPhotos.length > 0) {
+                shareBtn.style.display = 'block';
+                shareBtn.innerText = `🚀 [${currentFolder}] ${currentPhotos.length}장 보내기`;
+            } else {
+                shareBtn.style.display = 'none';
+            }
+            
+            // 다른 폴더로 이동 시 폴더 이름에도 장수 반영
+            Array.from(folderSelect.options).forEach(opt => {
+                opt.innerText = `${opt.value} (${folders[opt.value].length}장)`;
+            });
+        }
+
+        // 카메라 켜기
         function triggerCamera() {
-            if (collectedFiles.length >= 10) {
-                alert("최대 10장까지만 가능합니다! 전송 버튼을 눌러주세요.");
+            if (folders[currentFolder].length >= 10) {
+                alert("한 폴더당 최대 10장까지만 가능합니다!");
                 return;
             }
             cameraInput.click();
         }
 
-        // 데이터 URL을 파일 객체로 변환하는 함수
+        // 파일 변환 함수
         function dataURLtoFile(dataurl, filename) {
             var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
                 bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
@@ -145,11 +232,11 @@
             return new File([u8arr], filename, {type:mime});
         }
 
+        // 사진 찍었을 때 처리
         cameraInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
 
-            // 로딩 표시 대신 버튼 글씨 변경
             addBtn.innerText = "⏳ 처리 중...";
             addBtn.disabled = true;
 
@@ -173,28 +260,19 @@
 
                     const dataUrl = canvas.toDataURL('image/jpeg', COMPRESSION_QUALITY);
                     
-                    // 1. 파일 이름 생성 (work_1.jpg, work_2.jpg ...)
                     const date = new Date();
-                    const fileName = `work_${date.getHours()}${date.getMinutes()}_${collectedFiles.length + 1}.jpg`;
+                    // 파일 이름에 고객사 이름 포함 (예: 사과고객사_1430_1.jpg)
+                    const fileName = `${currentFolder}_${date.getHours()}${date.getMinutes()}_${folders[currentFolder].length + 1}.jpg`;
                     const compressedFile = dataURLtoFile(dataUrl, fileName);
 
-                    // 2. 보따리에 담기
-                    collectedFiles.push(compressedFile);
+                    // 현재 선택된 폴더에 사진 쏙 넣기
+                    folders[currentFolder].push({ file: compressedFile, url: dataUrl });
 
-                    // 3. 화면에 썸네일 추가
-                    const thumbImg = document.createElement('img');
-                    thumbImg.src = dataUrl;
-                    photoList.appendChild(thumbImg);
-
-                    // 4. UI 업데이트
-                    countDisplay.innerText = collectedFiles.length;
-                    shareBtn.style.display = 'block'; // 전송 버튼 보이기
-                    shareBtn.innerText = `🚀 ${collectedFiles.length}장 묶어서 보내기`;
+                    // 화면 다시 그리기
+                    renderPhotos();
                     
-                    addBtn.innerText = "📷 사진 촬영 (추가)";
+                    addBtn.innerText = "📷 현재 폴더에 사진 촬영";
                     addBtn.disabled = false;
-                    
-                    // 같은 파일 다시 찍을 수 있게 초기화
                     cameraInput.value = '';
                 };
                 img.src = event.target.result;
@@ -202,27 +280,36 @@
             reader.readAsDataURL(file);
         });
 
-        async function shareAllPhotos() {
-            if (collectedFiles.length === 0) return;
+        // 전송하기
+        async function shareCurrentFolder() {
+            const currentPhotos = folders[currentFolder];
+            if (currentPhotos.length === 0) return;
+
+            const filesToShare = currentPhotos.map(item => item.file);
 
             if (navigator.share) {
                 try {
                     await navigator.share({
-                        files: collectedFiles,
-                        title: '업무 사진 묶음',
-                        text: `총 ${collectedFiles.length}장의 사진입니다.`
+                        files: filesToShare,
+                        title: `${currentFolder} 업무 사진`,
+                        text: `${currentFolder} - 총 ${filesToShare.length}장`
                     });
+                    
                     // 전송 성공 시
-                    alert("전송 완료! 목록을 비웁니다.");
-                    location.reload(); // 새로고침해서 초기화
+                    if (confirm(`전송이 완료되었습니다.\n${currentFolder} 폴더의 사진을 비울까요?`)) {
+                        folders[currentFolder] = []; // 폴더 비우기
+                        renderPhotos();
+                    }
                 } catch (error) {
                     console.log('공유 실패', error);
-                    alert("전송이 취소되었거나 실패했습니다.");
                 }
             } else {
                 alert("이 브라우저는 여러 장 공유 기능을 지원하지 않습니다.");
             }
         }
+
+        // 시작할 때 폴더 세팅
+        initFolders();
     </script>
 </body>
 </html>
