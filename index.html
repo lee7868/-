@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>업무용 묶음 카메라 (메모 기능)</title>
+    <title>업무용 카메라 (메모+삭제 기능)</title>
     
     <link rel="icon" href="https://lee7868.github.io/-/icon.png">
     <link rel="apple-touch-icon" href="https://lee7868.github.io/-/icon.png">
@@ -78,7 +78,6 @@
         .btn-add { background-color: #007bff; color: white; }
         .btn-send { background-color: #28a745; color: white; display: none; margin-top: 5px; }
         
-        /* 메모장 스타일 */
         #memoInput {
             width: 100%;
             padding: 12px;
@@ -87,7 +86,7 @@
             font-size: 1rem;
             margin-top: 15px;
             box-sizing: border-box;
-            display: none; /* 사진이 있을 때만 보임 */
+            display: none;
             resize: none;
             height: 80px;
             font-family: inherit;
@@ -102,19 +101,46 @@
             white-space: pre-line;
         }
 
+        /* 갤러리 레이아웃 */
         #photoList {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 5px;
+            gap: 8px;
             margin-top: 15px;
         }
-        #photoList img {
+        /* 개별 사진 틀 */
+        .photo-item {
+            position: relative;
+            width: 100%;
+        }
+        .photo-item img {
             width: 100%;
             height: 90px;
             object-fit: cover;
             border-radius: 5px;
             border: 1px solid #ddd;
+            display: block;
         }
+        /* 개별 삭제 버튼 (빨간 X) */
+        .delete-btn {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: rgba(255, 0, 0, 0.85);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
         .count-badge { font-size: 1.1rem; color: #007bff; font-weight: bold; }
     </style>
 </head>
@@ -134,7 +160,7 @@
             📷 현재 폴더에 사진 촬영
         </button>
 
-        <textarea id="memoInput" placeholder="슬랙에 같이 보낼 메모를 적어주세요 (예: 특이사항 등)" oninput="saveMemo()"></textarea>
+        <textarea id="memoInput" placeholder="같이 보낼 메모를 적어주세요 (예: 특이사항 등)" oninput="saveMemo()"></textarea>
 
         <button id="shareBtn" class="btn btn-send" onclick="shareCurrentFolder()">
             🚀 현재 폴더 슬랙으로 보내기
@@ -159,7 +185,6 @@
         const MAX_HEIGHT = 1280;
         const COMPRESSION_QUALITY = 0.7;
 
-        // 보따리에 사진(photos)과 메모(memo)를 함께 저장하도록 구조 변경
         let folders = {
             "기본 고객사": { photos: [], memo: "" }
         };
@@ -199,9 +224,16 @@
             currentFolderName.innerText = currentFolder;
         }
 
-        // 사용자가 메모를 입력할 때마다 현재 폴더에 임시 저장
         function saveMemo() {
             folders[currentFolder].memo = memoInput.value;
+        }
+
+        // 특정 사진 삭제 함수
+        function deletePhoto(index) {
+            if (confirm("이 사진을 삭제할까요?")) {
+                folders[currentFolder].photos.splice(index, 1); // 배열에서 해당 사진 제거
+                renderPhotos(); // 화면 다시 그리기
+            }
         }
 
         function renderPhotos() {
@@ -209,14 +241,31 @@
             const currentData = folders[currentFolder];
             const currentPhotos = currentData.photos;
             
-            currentPhotos.forEach(item => {
+            currentPhotos.forEach((item, index) => {
+                // 사진 하나를 감싸는 틀 만들기
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'photo-item';
+
+                // 사진 이미지
                 const img = document.createElement('img');
                 img.src = item.url;
-                photoList.appendChild(img);
+
+                // 삭제 버튼 (X)
+                const delBtn = document.createElement('button');
+                delBtn.className = 'delete-btn';
+                delBtn.innerText = '✕';
+                // 클릭하면 몇 번째 사진인지 전달해서 삭제
+                delBtn.onclick = function() { deletePhoto(index); };
+
+                // 틀 안에 사진과 버튼 넣기
+                itemDiv.appendChild(img);
+                itemDiv.appendChild(delBtn);
+                
+                // 전체 목록에 추가
+                photoList.appendChild(itemDiv);
             });
 
             countDisplay.innerText = currentPhotos.length;
-            // 다른 폴더로 넘어갔을 때 그 폴더에 적어둔 메모를 다시 불러옴
             memoInput.value = currentData.memo;
             
             if (currentPhotos.length > 0) {
@@ -301,7 +350,6 @@
 
             const filesToShare = currentPhotos.map(item => item.file);
             
-            // 💡 전송할 텍스트 만들기 (메모가 있으면 추가)
             let shareText = `[${currentFolder}] - 총 ${filesToShare.length}장`;
             if (currentData.memo.trim() !== "") {
                 shareText += `\n\n📝 메모:\n${currentData.memo}`;
@@ -316,7 +364,7 @@
                     });
                     
                     if (confirm(`전송이 완료되었습니다.\n${currentFolder} 폴더의 사진과 메모를 비울까요?`)) {
-                        folders[currentFolder] = { photos: [], memo: "" }; // 폴더와 메모 동시 초기화
+                        folders[currentFolder] = { photos: [], memo: "" };
                         renderPhotos();
                     }
                 } catch (error) {
